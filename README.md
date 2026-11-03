@@ -39,7 +39,7 @@ The demo loads ES modules, so serve it over HTTP rather than opening the file:
 
 ```
 python3 -m http.server 8000
-open http://localhost:8000/demo.html
+open http://localhost:8000/index.html
 ```
 
 The demo uses `adapters/audio.js`, which plays MP3s from `audio/{lang}/{term}-{ipa}.mp3`, for example `audio/en/smaug-smɔːɡ.mp3` (the term is always lower-cased). If a file is missing, it retries with shorter language tags (`en-GB` → `en`). Without the files, IPA still displays, but Pronounce shows its error state.
@@ -57,7 +57,7 @@ There are deliberately no adapters that call a speech service straight from the 
 - `a-term.js`: the element and the `pronunciations` API
 - `a-term-toggle.js`: `<a-term-toggle>`, a "Show pronunciations" checkbox with an Alt+Shift+1 shortcut that sets `--a-term-pronunciation` for the page (or a `target` element)
 - `adapters/`: `audio.js`, which plays pre-recorded MP3s from a URL template, and `proxy.js`, which asks your own [`word-tip-audio`](../word-tip-audio) server for speech
-- `demo.html`, `demo-pronunciations.js`: the demo
+- `index.html`, `demo-pronunciations.js`: the demo
 
 ## With the spellcheck custom dictionary
 
