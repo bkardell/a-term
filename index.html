@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>&lt;a-term&gt; — Pronunciation Custom Element</title>
+
+  <meta name="a-term-audio-url" content="audio/{lang}/{term}-{ipa}.mp3">
+  <script type="module" src="adapters/audio.js"></script>
+  <script type="module" src="a-term.js"></script>
+  <script type="module" src="a-term-toggle.js"></script>
+  <script type="module" src="demo-pronunciations.js"></script>
+
+  <!--
+    ── The other adapter ─────────────────────────────────────────────────
+    The demo uses adapters/audio.js above (static recordings). To generate
+    speech live instead, replace those two lines with the proxy adapter,
+    which asks your own word-tip-audio server (../word-tip-audio, npm start):
+
+    <meta name="a-term-proxy-url" content="http://localhost:3000">
+    <script type="module" src="adapters/proxy.js"></script>
+
+    There are no adapters that call a speech service directly from the
+    page: any API key a page can read, every visitor can read and use.
+    Keys stay in word-tip-audio.
+    ──────────────────────────────────────────────────────────────────── -->
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: ui-serif, Georgia, 'Times New Roman', serif;
+      background: #fafafa;
+      color: #111827;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 64px 24px 80px;
+      line-height: 1.7;
+    }
+
+    .page { max-width: 660px; width: 100%; }
+
+    header {
+      margin-bottom: 48px;
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 32px;
+    }
+    header h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: #111827;
+      margin-bottom: 0.2em;
+    }
+    header .tag {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.78rem;
+      color: #6b7280;
+      letter-spacing: 0.02em;
+    }
+
+    section { margin-bottom: 44px; }
+    section h2 {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #9ca3af;
+      margin-bottom: 1rem;
+    }
+
+    p { font-size: 1rem; color: #1f2937; line-height: 1.8; margin-bottom: 1em; }
+    p:last-child { margin-bottom: 0; }
+    .prose { font-size: 1.05rem; line-height: 1.9; color: #1f2937; }
+    .prose-note {
+      margin-top: 12px;
+      font-size: 0.8rem;
+      color: #9ca3af;
+      font-style: italic;
+    }
+
+    /* In-page links land below the pinned toggle, not under it. */
+    [id] { scroll-margin-top: 80px; }
+
+    .quick-usage {
+      margin-top: 1rem;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+      padding: 0 16px;
+    }
+    .quick-usage[open] { padding-bottom: 4px; }
+    .quick-usage summary {
+      cursor: pointer;
+      padding: 12px 0;
+      font-family: system-ui, sans-serif;
+      font-weight: 600;
+      font-size: .95rem;
+      color: #111827;
+    }
+    .quick-usage p { font-size: .95rem; margin: .4rem 0; }
+    .quick-usage pre { margin-bottom: .8rem; }
+
+    pre {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.82rem;
+      background: #f3f4f6;
+      color: #374151;
+      padding: 18px 20px;
+      border-radius: 8px;
+      border: 1px solid #e5e7eb;
+      overflow-x: auto;
+      line-height: 1.75;
+      margin-bottom: 1.2rem;
+    }
+
+    code {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.83em;
+      background: #f3f4f6;
+      color: #374151;
+      padding: 1px 5px;
+      border-radius: 4px;
+      border: 1px solid #e5e7eb;
+    }
+
+    .ssml-log {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.78rem;
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 12px 16px;
+      min-height: 42px;
+      color: #374151;
+      word-break: break-all;
+      margin-top: 10px;
+      white-space: pre-wrap;
+    }
+    .ssml-log:empty::before {
+      content: 'SSML output appears here when you click Pronounce…';
+      color: #d1d5db;
+    }
+
+    .spell-demo {
+      display: block; inline-size: 100%; margin-top: 12px;
+      font: inherit; font-size: 1rem; line-height: 1.6;
+      padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px;
+      resize: vertical;
+    }
+    .spell-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .spell-actions button {
+      font: inherit; font-size: .85rem; padding: 6px 12px; cursor: pointer;
+      border: 1px solid #d1d5db; border-radius: 6px; background: #fff; color: #111827;
+    }
+    .spell-actions button:disabled { cursor: default; opacity: .5; }
+
+    .callout {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-left: 3px solid #94a3b8;
+      border-radius: 0 6px 6px 0;
+      padding: 12px 16px;
+      font-size: 0.85rem;
+      color: #475569;
+      line-height: 1.7;
+      margin-top: 10px;
+    }
+    .callout a { color: #374151; }
+
+    .adapter-badge {
+      display: inline-block;
+      font-family: ui-monospace, monospace;
+      font-size: 0.72rem;
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      padding: 2px 7px;
+      color: #374151;
+      margin-bottom: 1rem;
+    }
+    .adapter-badge.active {
+      background: #dcfce7;
+      border-color: #bbf7d0;
+      color: #166534;
+    }
+
+    hr { border: none; border-top: 1px solid #e5e7eb; margin: 44px 0; }
+    footer { font-size: 0.78rem; color: #d1d5db; margin-top: 16px; text-align: center; }
+
+    /* ── Pronunciation mode ─────────────────────────────── */
+    /* One reader-facing control: <a-term-toggle> sets an inherited custom
+       property that every <a-term> responds to. */
+
+    /* Scoping: this section always shows pronunciations. */
+    .always-on { --a-term-pronunciation: inline; }
+    .always-on {
+      border: 1px dashed #d1d5db;
+      border-radius: 8px;
+      padding: 16px 18px;
+      background: #fcfcfd;
+    }
+    .always-on-badge {
+      display: inline-block;
+      vertical-align: middle;
+      margin-inline-start: .5em;
+      padding: 1px 8px;
+      border-radius: 999px;
+      background: #111827;
+      color: #fff;
+      font: 600 0.68rem/1.6 ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    .mode-toggle {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      margin: -12px 0 40px;
+      padding: 10px 14px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font-family: system-ui, sans-serif;
+      font-size: .9rem;
+      color: #374151;
+    }
+    .mode-toggle::part(checkbox) { accent-color: #111827; }
+    /* No keyboard shortcut to mention on touch-only screens. */
+    @media (hover: none) and (pointer: coarse) { .keyboard-only { display: none; } }
+    .mode-toggle::part(hint) { color: #6b7280; font-size: .8rem; opacity: 1; }
+    kbd {
+      /* A "1" with a flag and a base, so Alt+Shift+1 isn't read as Alt+Shift+I. */
+      font-family: Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', monospace;
+      font-variant-numeric: lining-nums;
+      font-size: .9em;
+      padding: 0 .35em;
+      border: 1px solid #d1d5db;
+      border-bottom-width: 2px;
+      border-radius: 4px;
+      background: #f9fafb;
+    }
+
+    /* ── Styling demo ───────────────────────────────────── */
+    .dark-prose {
+      background: #1e1e2e;
+      color: #cdd6f4;
+      padding: 1.2rem 1.4rem;
+      border-radius: 8px;
+      font-size: 1.05rem;
+      line-height: 1.9;
+    }
+    .dark-prose a-term {
+      --a-term-ipa-color: #a6e3a1;
+      --a-term-ipa-color-hover: #1e1e2e;
+      --a-term-ipa-bg: #313244;
+      --a-term-ipa-bg-hover: #a6e3a1;
+    }
+    .dark-prose a-term::part(term) {
+      text-decoration: underline dotted #6c7086;
+      text-underline-offset: 3px;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <h1>&lt;a-term&gt;</h1>
+    <span class="tag">A pronunciation hint custom element · no dependencies</span>
+  </header>
+
+  <a-term-toggle class="mode-toggle"></a-term-toggle>
+
+  <!-- ── About ──────────────────────────────────── -->
+  <section>
+    <h2>What it's for</h2>
+    <p>
+      <code>&lt;a-term&gt;</code> marks terms whose pronunciation is worth
+      knowing — names, invented words, specialist vocabulary. By default they read
+      as ordinary text: no underline, no tab stops, nothing to hover.
+      Turn on <em>Show pronunciations</em> above<span class="keyboard-only"> (or press
+      <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>1</kbd>)</span> and each one shows its IPA
+      inline, right where you are reading. Where speech is available, the IPA
+      itself is the button that pronounces it.
+    </p>
+    <p>
+      Pronunciations live in a page-level list, so a name like Smaug is
+      defined once and every occurrence can use it — whichever page or chapter
+      a reader happens to land on.
+    </p>
+
+    <details class="quick-usage">
+      <summary>Usage</summary>
+      <p>Add pronunciations in a script:</p>
+      <pre>&lt;script type="module"&gt;
+  import { pronunciations } from './a-term.js';
+
+  pronunciations.add([
+    { word: 'Smaug', pronunciation: { ipa: 'smɔːɡ', audio: 'audio/en/smaug.mp3' } },
+  ]);
+&lt;/script&gt;</pre>
+      <p>Mark the terms in your HTML:</p>
+      <pre>&lt;a-term&gt;Smaug&lt;/a-term&gt;</pre>
+      <p>
+        Terms read as plain text until pronunciations are shown. Let readers
+        switch them on with the toggle, or set
+        <code>--a-term-pronunciation: inline</code> in CSS:
+      </p>
+      <pre>&lt;script type="module" src="a-term-toggle.js"&gt;&lt;/script&gt;
+&lt;a-term-toggle&gt;&lt;/a-term-toggle&gt;</pre>
+      <p>Variants, adapters, styling and the rest are under <a href="#reference">Reference</a> at the end.</p>
+    </details>
+  </section>
+
+  <!-- ── Adapter status ─────────────────────────── -->
+  <section>
+    <h2>Active TTS engine</h2>
+    <div class="adapter-badge" id="adapter-badge">⏳ checking…</div>
+    <div class="callout">
+      IPA is shown in pronunciation mode in all browsers.
+      It becomes a Pronounce button when it can be spoken: with a recording
+      (named in its pronunciation entry or by <code>audio-src</code>) or with an
+      adapter. Safari's built-in speech can also be enabled
+      (<code>ATerm.safariSpeech = true</code>), but it is off by default
+      because it is unreliable in practice.
+    </div>
+  </section>
+
+  <!-- ── Irish names ────────────────────────────── -->
+  <section>
+    <h2>Irish names — try guessing before you switch it on</h2>
+    <p class="prose">
+      Irish mythology is full of names that look utterly impenetrable to
+      English eyes.
+      <a-term lang="ga">Niamh</a-term>
+      — daughter of the sea god Manannán — appears in many retellings, yet
+      almost no one pronounces it correctly on first encounter.
+      <a-term lang="ga">Saoirse</a-term>
+      has become familiar as a given name but still trips people up, and
+      <a-term lang="ga">Cúchulainn</a-term>,
+      the great hero of the Ulster Cycle, is comfortably mispronounced for
+      entire lifetimes.
+      <a-term lang="ga">Tadhg</a-term>
+      and
+      <a-term lang="ga">Aoife</a-term>
+      round out a set that looks like a keyboard walked across the alphabet.
+    </p>
+    <p class="prose-note">
+      Every entry in this demo's pronunciations names its recording
+      (<code>pronunciation.audio</code>), so these play even on a page with no
+      adapter. See <em>Audio</em> under Reference below.<br>
+      Irish (Gaeilge) · For genuine accuracy, record with a voice that speaks
+      Irish: word-tip-audio's Azure provider uses <code>ga-IE-OrlaNeural</code>;
+      Google and Polly have no Irish voice and approximate through English
+      phonemes. Note that Saoirse Ronan
+      pronounces her name "SUR-sha" (rhymes with inertia); "SEER-sha" is a different
+      regional variant.
+    </p>
+  </section>
+
+  <!-- ── Tolkien ─────────────────────────────────── -->
+  <section>
+    <h2>Tolkien — one entry, every occurrence</h2>
+    <p class="prose">
+      The dragon <a-term>Smaug</a-term> lay upon his hoard beneath the
+      Lonely Mountain. The wizard <a-term>Gandalf</a-term>
+      had warned of its temper, but <a-term>Bilbo</a-term> pressed on
+      regardless. Whatever else he did, <a-term>Bilbo</a-term> knew better than
+      to wake <a-term>Smaug</a-term>.
+    </p>
+    <p class="prose-note">
+      Each name appears once in <code>demo-pronunciations.js</code>; the markup carries
+      no IPA at all.
+    </p>
+  </section>
+
+  <!-- ── Right-to-left ──────────────────────────── -->
+  <section>
+    <h2>Right-to-left text — Genesis 1:1</h2>
+    <p class="prose" lang="he" dir="rtl">
+      <a-term>בְּרֵאשִׁית</a-term>
+      <a-term>בָּרָא</a-term>
+      <a-term>אֱלֹהִים</a-term>
+      <a-term>אֵת</a-term>
+      <a-term>הַשָּׁמַיִם</a-term>
+      <a-term>וְאֵת</a-term>
+      <a-term>הָאָרֶץ</a-term>.
+    </p>
+    <p class="prose-note">
+      “In the beginning God created the heaven and the earth.” (King James
+      Version.) Each Hebrew word has a pronunciation entry, with Modern Hebrew
+      pronunciation. IPA always reads left to right, so it is kept separate
+      from the surrounding Hebrew rather than being reordered with it.
+    </p>
+  </section>
+
+  <!-- ── Shakespeare ───────────────────────────── -->
+  <section>
+    <h2>Shakespeare — one-off inline overrides</h2>
+    <p class="prose">
+      I know a bank where the wild
+      <a-term ipa="taɪm">thyme</a-term>
+      blows, where
+      <a-term ipa="ˈɒkslɪps">oxlips</a-term>
+      and the nodding violet
+      grows, quite over-canopied
+      with luscious
+      <a-term ipa="ˈwʊdbaɪn">woodbine</a-term>,
+      with sweet
+      <a-term ipa="ˈmʌsk ˌrəʊzɪz">musk-roses</a-term>
+      and with
+      <a-term ipa="ˈɛɡlənˌtaɪn">eglantine</a-term>.
+    </p>
+    <p class="prose-note">
+      Act II, Scene i · These use the <code>ipa</code> attribute directly — the
+      escape hatch for terms not worth an entry.
+    </p>
+  </section>
+
+  <!-- ── Tomato ─────────────────────────────── -->
+  <section>
+    <h2>You say tomato — variants</h2>
+    <p class="prose">
+      You say <a-term variant="1">tomato</a-term>,
+      I say <a-term variant="2">tomato</a-term>.
+      You say <a-term variant="1">potato</a-term>,
+      I say <a-term variant="2">potato</a-term>.
+      You say <a-term variant="1">either</a-term>,
+      I say <a-term variant="2">either</a-term>.
+      You say <a-term variant="1">neither</a-term>,
+      I say <a-term variant="2">neither</a-term>.
+    </p>
+    <p class="prose-note">
+      Here the contrast <em>is</em> the content, so each occurrence names its
+      variant: <code>variant="1"</code> or <code>variant="2"</code>. The ids are
+      arbitrary keys into the pronunciations; they say nothing about the sound.
+    </p>
+  </section>
+
+  <!-- ── Medical ────────────────────────────────── -->
+  <section class="always-on">
+    <h2>Medical terminology <span class="always-on-badge">Always on</span></h2>
+    <p class="prose">
+      In clinical settings, mispronunciation can undermine a patient's confidence
+      in their care. The heart's
+      <a-term>aorta</a-term>
+      is routinely stressed on the wrong syllable, and the blood condition
+      <a-term>thrombocytopenia</a-term>
+      defeats nearly everyone on first sight.
+      <a-term>Fibromyalgia</a-term>
+      is chronically mispronounced even by those who live with it. Knowing how to say
+      <a-term>dysphagia</a-term>
+      — difficulty swallowing — correctly, and not confuse it with
+      <a-term>dysphasia</a-term>
+      — impaired speech — is a distinction that pronunciation makes audible.
+    </p>
+    <p class="prose-note">
+      This section sets <code>--a-term-pronunciation: inline</code> itself, so it shows
+      pronunciations regardless of the toggle — the property cascades like any other.
+    </p>
+  </section>
+
+  <!-- ── Styling demo ───────────────────────────── -->
+  <section>
+    <h2>Custom styling</h2>
+    <div class="dark-prose">
+      The
+      <a-term>thrombocytopenia</a-term>
+      reading was flagged by the
+      <a-term>haematologist</a-term>
+      during morning rounds.
+    </div>
+    <pre style="margin-top:1rem;">a-term {
+  --a-term-ipa-color: #a6e3a1;
+  --a-term-ipa-bg: #313244;
+  --a-term-ipa-bg-hover: #a6e3a1;
+}
+a-term::part(term) {
+  text-decoration: underline dotted #6c7086;
+}</pre>
+    <p class="prose-note">
+      The IPA parts only render in pronunciation mode, so turn on
+      <em>Show pronunciations</em> (or set <code>--a-term-pronunciation: inline</code>
+      on this section) to see them.
+    </p>
+  </section>
+
+  <!-- ── Spellcheck ─────────────────────────────── -->
+  <section>
+    <h2>Spellcheck — sharing the words</h2>
+    <p class="prose">
+      The
+      <a href="https://github.com/Igalia/explainers/blob/main/spell-check-dictionary/README.md">spellcheck
+      custom dictionary proposal</a>
+      (<a href="https://github.com/whatwg/html/pull/12590">whatwg/html#12590</a>)
+      lets a page tell the browser's spellchecker about its own words. The
+      words a reader needs help pronouncing are usually the ones a
+      spellchecker flags, so the simplest thing is to give it the same list.
+      Both use the same shape, a <code>word</code>.
+    </p>
+    <p class="prose-note">
+      They are separate lists, though, and could differ: a page might accept
+      spellings it doesn't pronounce, or pronounce words that are already
+      spelled correctly. Passing those along anyway does no harm.
+    </p>
+    <textarea id="spell-demo" class="spell-demo" lang="en" spellcheck="true" rows="3"
+      aria-label="Text to spellcheck">Niamh and Saoirse asked the haematologist about thrombocytopenia, then read about Smaug, Gandalf and Cúchulainn.</textarea>
+    <p class="spell-actions">
+      <button type="button" id="spell-add">Add the pronounced words to the spellchecker</button>
+      <button type="button" id="spell-remove">Remove them</button>
+    </p>
+    <p class="prose-note" id="spell-status" role="status"></p>
+    <pre>import { pronunciations } from './a-term.js';
+
+const entries = [
+  { word: 'Niamh', pronunciation: { ipa: 'niːv', audio: 'audio/ga/niamh-niːv.mp3' } },
+  // …
+];
+
+pronunciations.add(entries);
+// The same words stop being flagged as misspelled.
+document.spellCheckCustomDictionary?.addWords(entries.map(e =&gt; e.word));</pre>
+  </section>
+
+  <!-- ── SSML log ───────────────────────────────── -->
+  <section>
+    <h2>SSML event output</h2>
+    <p style="font-size:0.88rem; color:#6b7280; margin-bottom:0.5rem;">
+      Every click on an IPA button fires a <code>a-term-ssml</code> event. Whatever the
+      source — pronunciations, variant or inline override — what reaches the
+      speech engine is always a concrete <code>&lt;phoneme&gt;</code>.
+    </p>
+    <div class="ssml-log" id="ssml-log"></div>
+  </section>
+
+  <hr>
+
+  <!-- ── Reference ──────────────────────────────── -->
+  <section id="reference">
+    <h2>Reference</h2>
+
+    <pre>&lt;!-- 1. Optionally pick an adapter (before a-term.js) --&gt;
+&lt;meta name="a-term-audio-url" content="audio/{lang}/{term}-{ipa}.mp3"&gt;
+&lt;script type="module" src="adapters/audio.js"&gt;&lt;/script&gt;
+
+&lt;!-- 2. Load the element and your pronunciations --&gt;
+&lt;script type="module"&gt;
+  import { pronunciations } from './a-term.js';
+  pronunciations.add([
+    { word: 'Smaug', ipa: 'smɔːɡ' },   // ipa: shorthand for pronunciation: { ipa }
+    { word: 'Niamh', pronunciation: {
+      ipa: 'niːv', audio: 'audio/ga/niamh.mp3' } },   // with a recording
+    // One entry per pronunciation; variant ids are arbitrary keys.
+    { word: 'tomato', variant: '1', lang: 'en-US', pronunciation: { ipa: 'təˈmeɪtoʊ' } },
+    { word: 'tomato', variant: '2', lang: 'en-GB', pronunciation: { ipa: 'təˈmɑːtəʊ' } },
+  ]);
+&lt;/script&gt;
+
+&lt;!-- 3. Mark terms --&gt;
+&lt;a-term&gt;Smaug&lt;/a-term&gt;
+&lt;a-term variant="2"&gt;tomato&lt;/a-term&gt;
+&lt;a-term ipa="taɪm"&gt;thyme&lt;/a-term&gt;
+
+&lt;!-- 4. Let readers turn pronunciations on (checkbox + Alt+Shift+1) --&gt;
+&lt;script type="module" src="a-term-toggle.js"&gt;&lt;/script&gt;
+&lt;a-term-toggle&gt;&lt;/a-term-toggle&gt;
+
+&lt;!-- Options: label text, another shortcut, or just part of the page --&gt;
+&lt;a-term-toggle shortcut="Alt+Shift+P" target="article"&gt;Show how to say names&lt;/a-term-toggle&gt;
+
+&lt;!-- Or, with no script at all: any checkbox and one CSS rule --&gt;
+&lt;input type="checkbox" id="show-pronunciations"&gt;
+&lt;style&gt;
+  :root:has(#show-pronunciations:checked) { --a-term-pronunciation: inline; }
+&lt;/style&gt;</pre>
+
+    <p style="font-size:0.88rem; color:#6b7280; line-height:1.85;">
+      <strong style="color:#374151;">Attributes</strong><br>
+      <code>variant</code> — picks a pronunciation variant by its id. Ids are arbitrary keys.<br>
+      <code>ipa</code> — one-off override; takes precedence over the pronunciations.<br>
+      <code>lang</code> — inherited as usual; chooses the default variant and the voice.<br>
+      <code>audio-src</code> — URL of a recording (MP3) for this occurrence only.
+    </p>
+
+    <p style="margin-top:1.2rem; font-size:0.88rem; color:#6b7280; line-height:1.85;">
+      <strong style="color:#374151;">Audio</strong><br>
+      A Pronounce button plays the first of these that applies:<br>
+      1. <code>audio-src</code> on the occurrence — a recording for one place on one page.<br>
+      2. <code>pronunciation.audio</code> in the term's entry — a recording for the
+      term (or one variant of it), used wherever it appears. Name files however
+      you like; relative URLs resolve against the page.<br>
+      3. An adapter — builds the URL for you (the Audio adapter's template) or
+      asks your own <code>word-tip-audio</code> server to speak the IPA (the
+      Proxy adapter).<br>
+      4. Safari's built-in speech, only if enabled with
+      <code>ATerm.safariSpeech = true</code> (off by default; unreliable).<br>
+      An <code>ipa</code> attribute replaces the entry's pronunciation,
+      including its recording. Recordings are fetched once per page and cached.
+    </p>
+
+    <p style="margin-top:1.2rem; font-size:0.88rem; color:#6b7280; line-height:1.85;">
+      <strong style="color:#374151;">Styling</strong><br>
+      <code>::part(ipa)</code> and <code>::part(button)</code> only render when
+      pronunciations are shown (<code>--a-term-pronunciation: inline</code>).<br>
+      <code>--a-term-pronunciation</code> (<code>none</code> | <code>inline</code>) ·
+      <code>::part(term)</code>, <code>::part(ipa)</code>, <code>::part(button)</code> ·
+      <code>--a-term-ipa-color</code>, <code>--a-term-ipa-color-hover</code>,
+      <code>--a-term-ipa-bg</code>, <code>--a-term-ipa-bg-hover</code>.
+    </p>
+
+    <p style="margin-top:1.2rem; font-size:0.88rem; color:#6b7280; line-height:1.85;">
+      <strong style="color:#374151;">Adapters</strong><br>
+      Include one adapter before <code>a-term.js</code>. It registers itself as
+      <code>window.__aTermAdapter</code> and is picked up automatically.<br>
+      Audio — plays pre-recorded MP3s from a URL template; <code>{term}</code>,
+      <code>{lang}</code> and <code>{ipa}</code> are filled in for each term.<br>
+      Proxy — asks your own <code>word-tip-audio</code> server, which speaks the
+      IPA with Azure, Google or Polly and caches the result.<br>
+      There are deliberately no adapters that call a speech service straight
+      from the page: any API key a page can read, every visitor can read and
+      use. Keys stay on your server. <code>word-tip-audio</code> is also the
+      easiest way to make recordings in the first place: its cache uses the
+      same <code>{lang}/{term}-{ipa}.mp3</code> layout the Audio adapter reads,
+      and its <code>/new</code> page creates one at a time.
+    </p>
+  </section>
+
+  <footer>
+    No dependencies &nbsp;·&nbsp; Custom Elements v1 &nbsp;·&nbsp;
+    Container style queries &nbsp;·&nbsp; SSML 1.1
+  </footer>
+
+</div>
+
+<script>
+  window.addEventListener('load', () => {
+    const badge   = document.getElementById('adapter-badge');
+    const adapter = window.__aTermAdapter;
+    const safari  = customElements.get('a-term')?.safariSpeech;
+
+    if (adapter) {
+      badge.textContent = `✓ Adapter: ${adapter._name ?? 'custom'}`;
+      badge.classList.add('active');
+    } else if (safari) {
+      badge.textContent = '✓ Safari built-in speech (opt-in)';
+      badge.classList.add('active');
+    } else {
+      badge.textContent = 'No adapter — only terms with recordings get a Pronounce button';
+    }
+  });
+
+
+  // The shortcut mentioned in the intro text: Option on Apple keyboards
+  // (<a-term-toggle> does this for its own hint).
+  if (/Mac|iPhone|iPad/.test(navigator.platform)) {
+    document.querySelectorAll('kbd').forEach(k => {
+      if (k.textContent === 'Alt') k.textContent = 'Option';
+    });
+  }
+
+  document.addEventListener('a-term-ssml', e => {
+    document.getElementById('ssml-log').textContent = e.detail.ssml;
+  });
+
+  // ── Spellcheck: give the spellcheck custom dictionary the same words,
+  //    where supported.
+  import('./demo-pronunciations.js').then(({ entries }) => {
+    const scd    = document.spellCheckCustomDictionary;
+    const status = document.getElementById('spell-status');
+    const add    = document.getElementById('spell-add');
+    const remove = document.getElementById('spell-remove');
+    if (!scd) {
+      add.disabled = remove.disabled = true;
+      status.textContent = 'This browser doesn’t support document.spellCheckCustomDictionary ' +
+        'yet, so names like Niamh and Smaug stay underlined (click into the box to see).';
+      return;
+    }
+    const words = entries.map(e => e.word);
+    add.onclick = () => {
+      scd.addWords(words);
+      status.textContent = `Added ${words.length} words. Click into the box: they are no longer flagged.`;
+    };
+    remove.onclick = () => {
+      scd.removeWords(words);
+      status.textContent = 'Removed them again; the spellchecker flags them as before.';
+    };
+    status.textContent = 'Click into the box to see which words are flagged, then add the pronounced words.';
+  });
+</script>
+</body>
+</html>
